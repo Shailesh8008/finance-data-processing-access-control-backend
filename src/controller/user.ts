@@ -1,8 +1,9 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { MyJwtPayload, userData } from "../types/auth";
+import { MyJwtPayload } from "../types/auth";
 import userModel from "../model/user";
+
 const getUser = (req: Request, res: Response) => {
   res.json({ user: req.user as MyJwtPayload });
 };
@@ -44,12 +45,12 @@ const login = async (req: Request, res: Response) => {
         .status(400)
         .json({ message: "Bad Request (Email or password missing!)" });
     }
-    const emailExists = (await userModel.findOne({ email }).lean()) as userData;
+    const emailExists = await userModel.findOne({ email });
 
     if (!emailExists) {
       return res.status(404).json({ message: "Email not found!" });
     }
-    const isPass = await bcrypt.compare(password, emailExists.password);
+    const isPass = await bcrypt.compare(password, emailExists.password!);
     if (!isPass) {
       return res.status(401).json({ message: "Invalid password!" });
     }
@@ -72,6 +73,10 @@ const login = async (req: Request, res: Response) => {
       sameSite: process.env.ENV === "production" ? "none" : "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
+
+    emailExists.status = "active";
+    emailExists.lastSeen = new Date();
+    await emailExists.save();
     return res.json({
       message:
         emailExists.role === "admin" ? "Welcome Admin!" : "Login Successfully!",
@@ -83,5 +88,20 @@ const login = async (req: Request, res: Response) => {
   }
 };
 
-const userController = { getUser, register, login };
+const logout = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.user as MyJwtPayload;
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.ENV === "production",
+      sameSite: process.env.ENV === "production" ? "none" : "lax",
+    });
+    await userModel.findByIdAndUpdate(id, { $set: { status: "inactive" } });
+    return res.json({ message: "Logged out successfully!" });
+  } catch (error) {
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const userController = { getUser, register, login, logout };
 export default userController;

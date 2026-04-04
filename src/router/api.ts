@@ -8,5 +8,6 @@ apiRouter.get("/get-user", auth, userController.getUser);
 
 apiRouter.post("/register", userController.register);
 apiRouter.post("/login", userController.login);
+apiRouter.post("/logout", auth, userController.logout);
 
 export default apiRouter;
