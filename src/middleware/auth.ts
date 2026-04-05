@@ -35,8 +35,10 @@ export const auth = async (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const adminAuth = (req: Request, res: Response, next: NextFunction) => {
-  const { role } = req.user!;
-  if (role === "admin") return next();
+  if (req.user) {
+    const { role } = req.user;
+    if (role === "admin") return next();
+  }
   return res
     .status(401)
     .json({ message: "Unauthorized (Please login as admin)" });

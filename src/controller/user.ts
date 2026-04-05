@@ -3,6 +3,8 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { MyJwtPayload } from "../types/auth";
 import userModel from "../model/user";
+import recordModel from "../model/record";
+import dayjs from "dayjs";
 
 const getUser = (req: Request, res: Response) => {
   res.json({ user: req.user as MyJwtPayload });
@@ -103,5 +105,78 @@ const logout = async (req: Request, res: Response) => {
   }
 };
 
-const userController = { getUser, register, login, logout };
+const getAllRecords = async (req: Request, res: Response) => {
+  try {
+    let filters: Record<string, string | {}> = {};
+    if (req.query) {
+      const { date, type, category } = req.query;
+      if (type) filters.type = type.toString();
+      if (category) filters.category = category.toString();
+      if (date) {
+        if (!dayjs(date.toString(), "YYYY-MM-DD", true).isValid()) {
+          return res
+            .status(400)
+            .json({ error: "Bad request (Invalid date format)" });
+        }
+        const st = dayjs(date.toString()).startOf("day").toDate();
+        const end = dayjs(date.toString()).endOf("day").toDate();
+        filters.date = { $gt: st, $lt: end };
+      }
+    }
+    const records = await recordModel.aggregate([
+      { $match: filters },
+      {
+        $project: {
+          _id: 0,
+          id: "$_id",
+          amount: 1,
+          type: 1,
+          date: 1,
+          category: 1,
+          description: 1,
+        },
+      },
+    ]);
+    return res.json({ records });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const getOneRecord = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  if (id.length !== 24)
+    return res.status(400).json({
+      message: `Invalid id (id should be of 24 characters, but found ${id.length})`,
+    });
+  try {
+    const data = await recordModel.findById(id)?.lean();
+    const record = {
+      id: data?._id,
+      amount: data?.amount,
+      type: data?.type,
+      date: data?.date,
+      category: data?.category,
+      description: data?.description,
+    };
+    if (!data)
+      return res
+        .status(404)
+        .json({ message: `Not found (cannot find record with the id: ${id})` });
+    return res.json({ record });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+const userController = {
+  getUser,
+  register,
+  login,
+  logout,
+  getAllRecords,
+  getOneRecord,
+};
 export default userController;
