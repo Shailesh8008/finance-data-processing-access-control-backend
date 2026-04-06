@@ -72,6 +72,7 @@ const getAllRecords = async (req: Request, res: Response) => {
     }
     const records = await recordModel.aggregate([
       { $match: filters },
+      { $sort: { _id: -1 } },
       {
         $project: {
           _id: 0,
@@ -86,6 +87,11 @@ const getAllRecords = async (req: Request, res: Response) => {
         },
       },
     ]);
+    const pageNum = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.max(1, Math.min(Number(req.query.limit) || 10, 100));
+
+    records.push({ $skip: (pageNum - 1) * pageSize }, { $limit: pageSize });
+
     return res.json({ records });
   } catch (error) {
     console.log(error);
@@ -133,7 +139,7 @@ async function createOrUpdateSummary(userId: string, record: RecordType) {
           },
         ],
 
-        recentActivity: [{ $sort: { date: -1 } }, { $limit: 5 }],
+        recentActivity: [{ $sort: { date: -1 } }, { $limit: 3 }],
 
         monthlyTrends: [
           {

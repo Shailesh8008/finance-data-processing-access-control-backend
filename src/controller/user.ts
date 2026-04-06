@@ -139,6 +139,7 @@ const myRecords = async (req: Request, res: Response) => {
     const { id } = req.user as MyJwtPayload;
     const records = await recordModel.aggregate([
       { $match: { userId: id } },
+      { $sort: { _id: -1 } },
       {
         $project: {
           _id: 0,
@@ -157,6 +158,10 @@ const myRecords = async (req: Request, res: Response) => {
         message: `Not found (cannot find any record associated to userId: ${id})`,
       });
     }
+    const pageNum = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.max(1, Math.min(Number(req.query.limit) || 10, 100));
+    records.push({ $skip: (pageNum - 1) * pageSize }, { $limit: pageSize });
+
     return res.json({ records });
   } catch (error) {
     console.log(error);
