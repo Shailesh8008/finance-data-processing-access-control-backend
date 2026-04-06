@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { MyJwtPayload } from "../types/auth";
 import userModel from "../model/user";
 import recordModel from "../model/record";
-import dayjs from "dayjs";
+import summaryModel from "../model/summary";
 
 const getUser = (req: Request, res: Response) => {
   res.json({ user: req.user as MyJwtPayload });
@@ -106,13 +106,13 @@ const logout = async (req: Request, res: Response) => {
 };
 
 const getOneRecord = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  if (id.length !== 24)
+  const { recordId } = req.params;
+  if (recordId.length !== 24)
     return res.status(400).json({
-      message: `Invalid id (id should be of 24 characters, but found ${id.length})`,
+      message: `Invalid id (id should be of 24 characters, but found ${recordId.length})`,
     });
   try {
-    const data = await recordModel.findById(id)?.lean();
+    const data = await recordModel.findById(recordId)?.lean();
     const record = {
       id: data?._id,
       userId: data?.userId,
@@ -124,9 +124,9 @@ const getOneRecord = async (req: Request, res: Response) => {
       createdBy: data?.createdBy,
     };
     if (!data)
-      return res
-        .status(404)
-        .json({ message: `Not found (cannot find record with the id: ${id})` });
+      return res.status(404).json({
+        message: `Not found (cannot find record with the id: ${recordId})`,
+      });
     return res.json({ record });
   } catch (error) {
     console.log(error);
@@ -164,6 +164,32 @@ const myRecords = async (req: Request, res: Response) => {
   }
 };
 
+const mySummary = async (req: Request, res: Response) => {
+  const { id } = req.user as MyJwtPayload;
+  try {
+    const tempSummary = await summaryModel.findOne({ userId: id }).lean();
+    if (!tempSummary) {
+      return res.status(404).json({
+        message: `Not found (cannot find summary associated to userId: ${id})`,
+      });
+    }
+    const summary = {
+      totalIncome: tempSummary.totalIncome,
+      totalExpense: tempSummary.totalExpense,
+      netBalance: tempSummary.netBalance,
+      categoryWise: tempSummary.categoryWise,
+      RecentActivity: tempSummary.RecentActivity,
+      monthlyTrends: tempSummary.monthlyTrends,
+      weeklyTrends: tempSummary.weeklyTrends,
+      yearlyTrends: tempSummary.yearlyTrends,
+    };
+    return res.json({ summary });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 const userController = {
   getUser,
   register,
@@ -171,5 +197,6 @@ const userController = {
   logout,
   getOneRecord,
   myRecords,
+  mySummary,
 };
 export default userController;

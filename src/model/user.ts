@@ -2,12 +2,12 @@ import mongoose from "mongoose";
 const { Schema, model } = mongoose;
 
 const user = new Schema({
-  username: { type: String, require: true },
+  username: { type: String, required: true },
   role: { type: String, enum: ["user", "admin"], default: "user" },
-  email: { type: String, require: true },
-  password: { type: String, require: true },
+  email: { type: String, required: true },
+  password: { type: String, required: true },
   status: { type: String, enum: ["active", "inactive"], default: "inactive" },
-  lastSeen: { type: Date },
+  lastSeen: { type: Date, default: Date.now },
 });
 
 export default model("users", user);

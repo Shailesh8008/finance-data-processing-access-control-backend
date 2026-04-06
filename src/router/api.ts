@@ -9,8 +9,10 @@ apiRouter.get("/current-user", auth, userController.getUser);
 apiRouter.get("/users", auth, adminAuth, adminController.getAllUsers);
 apiRouter.get("/admins", auth, adminAuth, adminController.getAllAdmins);
 apiRouter.get("/records", auth, adminAuth, adminController.getAllRecords);
-apiRouter.get("/record/:id", auth, userController.getOneRecord);
+apiRouter.get("/record/:recordId", auth, userController.getOneRecord);
 apiRouter.get("/my-records", auth, userController.myRecords);
+apiRouter.get("/my-summary", auth, userController.mySummary);
+apiRouter.get("/summary/:userId", auth, adminAuth, adminController.summary);
 
 apiRouter.post("/register", userController.register);
 apiRouter.post("/login", userController.login);

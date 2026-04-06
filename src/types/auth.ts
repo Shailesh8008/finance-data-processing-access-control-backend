@@ -3,3 +3,4 @@ export interface MyJwtPayload {
   email?: string;
   role: "user" | "admin" | "guest";
 }
+

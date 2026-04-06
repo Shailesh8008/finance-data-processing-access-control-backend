@@ -3,6 +3,8 @@ import userModel from "../model/user";
 import recordModel from "../model/record";
 import dayjs from "dayjs";
 import { MyJwtPayload } from "../types/auth";
+import summaryModel from "../model/summary";
+import { RecordType } from "../types/records";
 
 const getAllUsers = async (req: Request, res: Response) => {
   try {
@@ -91,6 +93,117 @@ const getAllRecords = async (req: Request, res: Response) => {
   }
 };
 
+async function createOrUpdateSummary(userId: string, record: RecordType) {
+  const summaryData = await recordModel.aggregate([
+    { $match: { userId } },
+
+    {
+      $facet: {
+        totals: [
+          {
+            $group: {
+              _id: null,
+              totalIncome: {
+                $sum: {
+                  $cond: [{ $eq: ["$type", "income"] }, "$amount", 0],
+                },
+              },
+              totalExpense: {
+                $sum: {
+                  $cond: [{ $eq: ["$type", "expense"] }, "$amount", 0],
+                },
+              },
+            },
+          },
+        ],
+
+        categoryWise: [
+          {
+            $group: {
+              _id: "$category",
+              total: { $sum: "$amount" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              category: "$_id",
+              total: 1,
+            },
+          },
+        ],
+
+        recentActivity: [{ $sort: { date: -1 } }, { $limit: 5 }],
+
+        monthlyTrends: [
+          {
+            $group: {
+              _id: { $dateToString: { format: "%b", date: "$date" } },
+              total: { $sum: "$amount" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              month: "$_id",
+              total: 1,
+            },
+          },
+        ],
+
+        weeklyTrends: [
+          {
+            $group: {
+              _id: { $week: "$date" },
+              total: { $sum: "$amount" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              week: "$_id",
+              total: 1,
+            },
+          },
+        ],
+
+        yearlyTrends: [
+          {
+            $group: {
+              _id: { $year: "$date" },
+              total: { $sum: "$amount" },
+            },
+          },
+          {
+            $project: {
+              _id: 0,
+              year: "$_id",
+              total: 1,
+            },
+          },
+        ],
+      },
+    },
+  ]);
+  const totals = summaryData[0].totals[0] || {};
+  const netBalance = (totals.totalIncome || 0) - (totals.totalExpense || 0);
+  await summaryModel.findOneAndUpdate(
+    { userId },
+    {
+      userId,
+      totalIncome: totals.totalIncome || 0,
+      totalExpense: totals.totalExpense || 0,
+      netBalance,
+      categoryWise: summaryData[0].categoryWise,
+      RecentActivity: summaryData[0].recentActivity,
+      monthlyTrends: summaryData[0].monthlyTrends,
+      weeklyTrends: summaryData[0].weeklyTrends,
+      yearlyTrends: summaryData[0].yearlyTrends,
+    },
+    { upsert: true, new: true },
+  );
+}
+
 const createRecord = async (req: Request, res: Response) => {
   try {
     const { userId, amount, type, date, category, description } = req.body;
@@ -113,6 +226,12 @@ const createRecord = async (req: Request, res: Response) => {
           .json({ error: "Bad request (Invalid date format)" });
       }
     }
+    const user = await userModel.findById(userId).lean();
+    if (!user) {
+      return res
+        .status(404)
+        .json({ message: `Not found (cannot find user with id: ${userId})` });
+    }
     const record = new recordModel({
       userId,
       amount,
@@ -123,6 +242,7 @@ const createRecord = async (req: Request, res: Response) => {
       createdBy: admin,
     });
     await record.save();
+    createOrUpdateSummary(userId, record);
     return res.status(201).json({ message: "Record created successfully!" });
   } catch (error) {
     console.log(error);
@@ -143,7 +263,7 @@ const updateRecord = async (req: Request, res: Response) => {
         .status(400)
         .json({ message: `Bad request (body expected but found nothing)` });
     const { amount, type, date, category, description, userId } = req.body;
-    const record = await recordModel.findById(id);
+    const record = (await recordModel.findById(id)) as RecordType;
     if (!record)
       return res
         .status(404)
@@ -156,6 +276,7 @@ const updateRecord = async (req: Request, res: Response) => {
     if (userId) record.userId = userId;
     record.createdBy = admin;
     await record.save();
+    createOrUpdateSummary(userId, record);
     return res.status(201).json({ message: "Record updated successfully!" });
   } catch (error) {
     console.log(error);
@@ -183,6 +304,36 @@ const deleteRecord = async (req: Request, res: Response) => {
   }
 };
 
+const summary = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params;
+    if (userId.length !== 24)
+      return res.status(400).json({
+        message: `Invalid id (id should be of 24 characters, but found ${userId.length})`,
+      });
+    const tempSummary = await summaryModel.findOne({ userId }).lean();
+    if (!tempSummary) {
+      return res.status(404).json({
+        message: `Not found (cannot find summary associated to userId: ${userId})`,
+      });
+    }
+    const summary = {
+      totalIncome: tempSummary.totalIncome,
+      totalExpense: tempSummary.totalExpense,
+      netBalance: tempSummary.netBalance,
+      categoryWise: tempSummary.categoryWise,
+      RecentActivity: tempSummary.RecentActivity,
+      monthlyTrends: tempSummary.monthlyTrends,
+      weeklyTrends: tempSummary.weeklyTrends,
+      yearlyTrends: tempSummary.yearlyTrends,
+    };
+    return res.json({ summary });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 const adminController = {
   getAllUsers,
   getAllAdmins,
@@ -190,5 +341,6 @@ const adminController = {
   createRecord,
   updateRecord,
   deleteRecord,
+  summary,
 };
 export default adminController;
